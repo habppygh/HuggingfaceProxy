@@ -1,8 +1,26 @@
 /**
- * 配置区域
- * 请务必修改为你实际绑定的域名
+ * HuggingFace 代理 Worker (极简版)
+ * 
+ * 路由规则：
+ * - 默认请求 → 直接转发到 huggingface.co
+ * - /redirect_to_{domain}/... → 转发到 {domain}/...
+ * 
+ * 重定向处理：
+ * - 如果目标是 huggingface.co → 保持原路径
+ * - 如果目标是其他允许的域名 → 添加 /redirect_to_{domain} 前缀
  */
-const MAIN_SUBDOMAIN = 'hf';             // 你的主入口前缀 (对应 hf.yourdomain.com)
+
+// 允许的上游域名列表 (用于验证重定向目标)
+const ALLOWED_UPSTREAM_DOMAINS = [
+    'huggingface.co',
+    // .hf.co 结尾的域名都是允许的 CDN 节点
+];
+
+// 默认上游域名
+const DEFAULT_UPSTREAM = 'huggingface.co';
+
+// 重定向前缀
+const REDIRECT_PREFIX = 'redirect_to_';
 
 // hf_downloader.py 脚本内容模板
 const HF_DOWNLOADER_SCRIPT = `#!/usr/bin/env python3
@@ -87,7 +105,7 @@ class HFDownloader:
             
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
-        # 构建基础 URL
+        # 构建基础 URL (直接使用代理域名，默认转发到 huggingface.co)
         self.base_url = f"https://{proxy_domain}"
         
         # API 路径前缀
@@ -366,17 +384,88 @@ if __name__ == "__main__":
     main()
 `;
 
+/**
+ * 判断是否是允许的上游域名
+ * @param {string} hostname - 要检查的域名
+ * @returns {boolean}
+ */
+function isAllowedUpstream(hostname) {
+    // 直接匹配已知域名
+    if (ALLOWED_UPSTREAM_DOMAINS.includes(hostname)) {
+        return true;
+    }
+    // 允许所有 .hf.co 结尾的 CDN 节点
+    if (hostname.endsWith('.hf.co')) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * 解析请求路径，提取目标上游和实际路径
+ * @param {string} pathname - 请求路径
+ * @returns {{ upstream: string, path: string }}
+ */
+function parseRequest(pathname) {
+    // 检查是否有 redirect_to_ 前缀
+    // 格式: /redirect_to_{domain}/path/to/resource
+    const prefixPattern = new RegExp(`^/${REDIRECT_PREFIX}([^/]+)(/.*)$`);
+    const match = pathname.match(prefixPattern);
+    
+    if (match) {
+        // 有前缀，提取域名和路径
+        return {
+            upstream: match[1],
+            path: match[2]
+        };
+    }
+    
+    // 无前缀，使用默认上游
+    return {
+        upstream: DEFAULT_UPSTREAM,
+        path: pathname
+    };
+}
+
+/**
+ * 重写重定向 Location
+ * @param {string} location - 原始 Location
+ * @param {string} proxyOrigin - 代理服务器的 origin
+ * @returns {string | null} - 重写后的 Location，如果不需要重写则返回 null
+ */
+function rewriteLocation(location, proxyOrigin) {
+    try {
+        const locUrl = new URL(location);
+        const locHost = locUrl.hostname;
+        
+        // 检查是否是允许的上游域名
+        if (!isAllowedUpstream(locHost)) {
+            return null;
+        }
+        
+        // 构造新的重定向 URL
+        if (locHost === DEFAULT_UPSTREAM) {
+            // 默认上游，直接使用原路径
+            return `${proxyOrigin}${locUrl.pathname}${locUrl.search}`;
+        } else {
+            // 其他上游，添加 redirect_to_ 前缀
+            return `${proxyOrigin}/${REDIRECT_PREFIX}${locHost}${locUrl.pathname}${locUrl.search}`;
+        }
+    } catch (e) {
+        console.error("Location parse error:", e);
+        return null;
+    }
+}
+
 export default {
     async fetch(request, env, ctx) {
         const url = new URL(request.url);
         const hostname = url.hostname;
-
-        // 自动获取主域名 (假设 hostname 格式为 prefix.root_domain)
-        const firstDotIndex = hostname.indexOf('.');
-        const MY_ROOT_DOMAIN = firstDotIndex !== -1 ? hostname.substring(firstDotIndex + 1) : hostname;
+        const pathname = url.pathname;
+        const proxyOrigin = url.origin;
 
         // 处理 /hf_downloader.py 请求 - 动态生成脚本
-        if (url.pathname === '/hf_downloader.py') {
+        if (pathname === '/hf_downloader.py') {
             const script = HF_DOWNLOADER_SCRIPT.replace('{{PROXY_DOMAIN}}', hostname);
             return new Response(script, {
                 status: 200,
@@ -388,87 +477,90 @@ export default {
             });
         }
 
-        // 1. 解析当前请求的目标 (Upstream)
-        let upstreamHost = '';
+        // 处理根路径请求
+        if (pathname === '/' || pathname === '') {
+            return new Response(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HuggingFace Proxy</title>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+        h1 { color: #ff9d00; }
+        code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; }
+        pre { background: #f4f4f4; padding: 15px; border-radius: 8px; overflow-x: auto; }
+        a { color: #ff9d00; }
+    </style>
+</head>
+<body>
+    <h1>🤗 HuggingFace Proxy</h1>
+    <p>直接访问即可，所有请求自动转发到 HuggingFace。</p>
+    <h3>示例：</h3>
+    <pre>
+# 访问模型页面
+https://${hostname}/bert-base-uncased
 
-        // 提取子域名部分 (例如: cas-bridge_xethub)
-        // 逻辑：取第一个点之前的部分
-        const prefix = firstDotIndex !== -1 ? hostname.substring(0, firstDotIndex) : '';
+# 下载模型文件
+https://${hostname}/bert-base-uncased/resolve/main/config.json
 
-        if (prefix === MAIN_SUBDOMAIN) {
-            // 主入口 -> huggingface.co
-            upstreamHost = 'huggingface.co';
-        } else {
-            // CDN 映射逻辑:
-            // 1. 将 --- 还原为点 . (cas-bridge---xethub -> cas-bridge.xethub)
-            // 2. 补全 .hf.co 后缀
-            upstreamHost = prefix.replace(/---/g, '.') + '.hf.co';
+# API 调用
+https://${hostname}/api/models/bert-base-uncased
+    </pre>
+    <h3>下载器脚本：</h3>
+    <pre>curl -O https://${hostname}/hf_downloader.py</pre>
+</body>
+</html>
+            `, {
+                status: 200,
+                headers: { 'Content-Type': 'text/html; charset=utf-8' }
+            });
         }
 
-        // 2. 构建发往源站的请求
-        url.hostname = upstreamHost;
-        url.protocol = 'https:';
+        // 1. 解析请求，提取目标上游和实际路径
+        const { upstream, path } = parseRequest(pathname);
 
-        const newRequest = new Request(url, {
+        // 2. 验证上游域名是否被允许
+        if (!isAllowedUpstream(upstream)) {
+            return new Response(`Upstream not allowed: ${upstream}`, { status: 403 });
+        }
+
+        // 3. 构建发往源站的请求
+        const upstreamUrl = new URL(path, `https://${upstream}`);
+        upstreamUrl.search = url.search; // 保留查询参数
+
+        const newRequest = new Request(upstreamUrl, {
             method: request.method,
             headers: request.headers,
             body: request.body,
-            redirect: 'manual' // 【关键】手动拦截 302 重定向
+            redirect: 'manual' // 【关键】手动拦截重定向
         });
 
-        // 强制覆盖 Host 头，确保源站能处理
-        newRequest.headers.set('Host', upstreamHost);
+        // 强制覆盖 Host 头
+        newRequest.headers.set('Host', upstream);
 
         try {
-            // 3. 发起请求
+            // 4. 发起请求
             const response = await fetch(newRequest);
 
-            // 4. 拦截并重写重定向 (301, 302, 307 等)
+            // 5. 拦截并重写重定向
             if ([301, 302, 303, 307, 308].includes(response.status)) {
                 const location = response.headers.get('Location');
                 if (location) {
-                    try {
-                        const locUrl = new URL(location);
-                        const locHost = locUrl.hostname;
-                        let newPrefix = '';
-                        let shouldRewrite = false;
-
-                        // 判断重定向的目标地址
-                        if (locHost === 'huggingface.co') {
-                            // 如果跳回主站
-                            newPrefix = MAIN_SUBDOMAIN;
-                            shouldRewrite = true;
-                        } else if (locHost.endsWith('.hf.co')) {
-                            // 如果跳往 CDN (如 cas-bridge.xethub.hf.co)
-                            // 逻辑: 去掉 .hf.co -> 将点 . 替换为 ---
-                            const rawPrefix = locHost.slice(0, -6); // 移除 ".hf.co"
-                            newPrefix = rawPrefix.replace(/\./g, '---');
-                            shouldRewrite = true;
-                        }
-
-                        // 如果需要重写 Location
-                        if (shouldRewrite) {
-                            // 构造新的重定向地址指向你的域名
-                            locUrl.hostname = `${newPrefix}.${MY_ROOT_DOMAIN}`;
-                            locUrl.protocol = 'https:'; // 保持 HTTPS
-
-                            // 复制并修改响应头
-                            const newHeaders = new Headers(response.headers);
-                            newHeaders.set('Location', locUrl.toString());
-
-                            return new Response(response.body, {
-                                status: response.status,
-                                statusText: response.statusText,
-                                headers: newHeaders
-                            });
-                        }
-                    } catch (e) {
-                        console.error("Location parse error:", e);
+                    const newLocation = rewriteLocation(location, proxyOrigin);
+                    if (newLocation) {
+                        const newHeaders = new Headers(response.headers);
+                        newHeaders.set('Location', newLocation);
+                        return new Response(response.body, {
+                            status: response.status,
+                            statusText: response.statusText,
+                            headers: newHeaders
+                        });
                     }
                 }
             }
 
-            // 5. 非重定向请求，直接返回数据
+            // 6. 非重定向请求，直接返回
             return response;
 
         } catch (e) {
