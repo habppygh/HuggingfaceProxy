@@ -92,6 +92,38 @@ If you must add them manually, here is a list of common subdomains that need to 
 *   `cdn-lfs-us-1`
 *   `cdn-lfs`
 
+## 🛠️ Usage Guide
+
+> ⚠️ **Important**: It is NOT recommended to use `huggingface-cli` or Python's `snapshot_download` with this proxy. Cloudflare's caching mechanism often overrides or strips critical headers like `content-length` and `x-linked-size`. This causes validation failures in strict clients like `huggingface-cli` or `snapshot_download`. The built-in script described below bypasses these issues.
+
+### Using the Python Downloader (Recommended)
+
+This proxy comes with a built-in Python download script that acts as a `huggingface-cli` alternative but is optimized for this proxy.
+
+1.  **Download the script**:
+    Visit `https://hf.yourdomain.com/hf_downloader.py` or use wget:
+    ```bash
+    wget https://hf.yourdomain.com/hf_downloader.py
+    ```
+    *(The downloaded script will automatically bake in your proxy domain)*
+
+2.  **Install dependencies**:
+    ```bash
+    pip install requests tqdm
+    ```
+
+3.  **Run**:
+    ```bash
+    # Download a model (default)
+    python hf_downloader.py bert-base-uncased
+
+    # Download a dataset
+    python hf_downloader.py bigcode/the-stack-smol --type dataset
+
+    # Custom output directory and parallelism
+    python hf_downloader.py meta-llama/Llama-2-7b --workers 8 --output ./llama2
+    ```
+
 ## 🔍 How it Works
 
 ### Domain Mapping Rules
@@ -213,6 +245,38 @@ const MAIN_SUBDOMAIN = 'hf'; // 你的主入口前缀
 *   `cdn-lfs-eu-1`
 *   `cdn-lfs-us-1`
 *   `cdn-lfs`
+
+## 🛠️ 使用指南
+
+> ⚠️ **重要**: 不推荐直接使用 `huggingface-cli` 或 `snapshot_download` 搭配本代理使用。由于 Cloudflare 的缓存机制会覆盖或丢失 `content-length` / `x-linked-size` 等关键头信息，这会导致 `huggingface-cli` 或 `snapshot_download` 等严格校验的客户端下载失败。本项目自带的脚本已专门优化以避开此问题。
+
+### 使用 Python 下载器 (推荐)
+
+本代理内置了一个 Python 下载脚本，作为 `huggingface-cli` 的替代品，并且已针对本代理进行了预配置。
+
+1.  **下载脚本**:
+    直接访问 `https://hf.yourdomain.com/hf_downloader.py` 或使用 wget:
+    ```bash
+    wget https://hf.yourdomain.com/hf_downloader.py
+    ```
+    *(下载的脚本会自动将代理域名写入代码中，无需修改)*
+
+2.  **安装依赖**:
+    ```bash
+    pip install requests tqdm
+    ```
+
+3.  **运行**:
+    ```bash
+    # 下载模型 (默认)
+    python hf_downloader.py bert-base-uncased
+
+    # 下载数据集
+    python hf_downloader.py bigcode/the-stack-smol --type dataset
+
+    # 指定输出目录和并发数
+    python hf_downloader.py meta-llama/Llama-2-7b --workers 8 --output ./llama2
+    ```
 
 ## 🔍 工作原理
 
