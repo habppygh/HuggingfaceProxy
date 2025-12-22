@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HuggingFace Proxy</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #fafafa;
+            color: #333;
+        }
+        h1 {
+            color: #ff9d00;
+            margin-bottom: 10px;
+        }
+        h3 {
+            color: #555;
+            margin-top: 30px;
+        }
+        p {
+            color: #666;
+            line-height: 1.6;
+        }
+        code {
+            background: #e8e8e8;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+        }
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        pre code {
+            background: transparent;
+            padding: 0;
+        }
+        .comment {
+            color: #6a9955;
+        }
+        a {
+            color: #ff9d00;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .badge {
+            display: inline-block;
+            background: #ff9d00;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤗 HuggingFace Proxy <span class="badge">v2.0</span></h1>
+        <p>直接访问即可，所有请求自动转发到 HuggingFace。</p>
+        
+        <h3>📦 访问模型</h3>
+        <pre><code><span class="comment"># 访问模型页面</span>
+https://{{HOSTNAME}}/bert-base-uncased
+
+<span class="comment"># 下载模型文件</span>
+https://{{HOSTNAME}}/bert-base-uncased/resolve/main/config.json
+
+<span class="comment"># API 调用</span>
+https://{{HOSTNAME}}/api/models/bert-base-uncased</code></pre>
+
+        <h3>📥 下载器脚本</h3>
+        <pre><code><span class="comment"># 下载 Python 脚本</span>
+curl -O https://{{HOSTNAME}}/hf_downloader.py
+
+<span class="comment"># 使用示例</span>
+python hf_downloader.py bert-base-uncased
+python hf_downloader.py openai/whisper-large-v3 --type model</code></pre>
+
+        <h3>🔗 环境变量配置</h3>
+        <pre><code><span class="comment"># 设置 HuggingFace 镜像</span>
+export HF_ENDPOINT=https://{{HOSTNAME}}</code></pre>
+    </div>
+</body>
+</html>

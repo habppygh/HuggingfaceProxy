@@ -1,12 +1,15 @@
 {
   "name": "hf-proxy",
-  "version": "0.0.1",
+  "version": "2.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "wrangler pages dev .",
-    "deploy": "wrangler pages deploy ."
+    "build": "node build.js",
+    "dev": "npm run build && wrangler pages dev .",
+    "deploy": "npm run build && wrangler pages deploy ."
   },
   "devDependencies": {
+    "esbuild": "^0.24.0",
     "wrangler": "^3.0.0"
   }
 }

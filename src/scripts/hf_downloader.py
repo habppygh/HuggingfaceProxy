@@ -1,29 +1,4 @@
-/**
- * HuggingFace 代理 Worker (极简版)
- * 
- * 路由规则：
- * - 默认请求 → 直接转发到 huggingface.co
- * - /redirect_to_{domain}/... → 转发到 {domain}/...
- * 
- * 重定向处理：
- * - 如果目标是 huggingface.co → 保持原路径
- * - 如果目标是其他允许的域名 → 添加 /redirect_to_{domain} 前缀
- */
-
-// 允许的上游域名列表 (用于验证重定向目标)
-const ALLOWED_UPSTREAM_DOMAINS = [
-    'huggingface.co',
-    // .hf.co 结尾的域名都是允许的 CDN 节点
-];
-
-// 默认上游域名
-const DEFAULT_UPSTREAM = 'huggingface.co';
-
-// 重定向前缀
-const REDIRECT_PREFIX = 'redirect_to_';
-
-// hf_downloader.py 脚本内容模板
-const HF_DOWNLOADER_SCRIPT = `#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 Hugging Face 文件下载器
 通过代理服务器下载 Hugging Face 仓库文件
@@ -61,7 +36,7 @@ except ImportError:
 # Worker 会自动将下面的域名替换为请求的域名
 PROXY_DOMAIN = "{{PROXY_DOMAIN}}"  # 你的代理域名
 MAX_RETRIES = 3                    # 最大重试次数
-CHUNK_SIZE = 8 * 1024 * 1024       # 8MB 每块
+CHUNK_SIZE = 64 * 1024 * 1024      # 64MB 每块
 DEFAULT_WORKERS = 4                # 默认并行下载数
 
 
@@ -230,7 +205,7 @@ class HFDownloader:
                 return True
                 
             except Exception as e:
-                print(f"\\n⚠️ 下载失败 ({attempt + 1}/{MAX_RETRIES}): {file_info.path} - {e}")
+                print(f"\n⚠️ 下载失败 ({attempt + 1}/{MAX_RETRIES}): {file_info.path} - {e}")
                 if attempt < MAX_RETRIES - 1:
                     import time
                     time.sleep(2 ** attempt)  # 指数退避
@@ -248,9 +223,9 @@ class HFDownloader:
         
         # 计算总大小
         total_size = sum(f.size for f in files)
-        print(f"\\n📦 准备下载 {len(files)} 个文件, 总大小: {self._format_size(total_size)}")
+        print(f"\n📦 准备下载 {len(files)} 个文件, 总大小: {self._format_size(total_size)}")
         print(f"📁 输出目录: {self.output_dir}")
-        print(f"🔧 并行数: {self.workers}\\n")
+        print(f"🔧 并行数: {self.workers}\n")
         
         # 显示文件列表
         print("=" * 60)
@@ -261,7 +236,7 @@ class HFDownloader:
             print(f"{name:<45} {self._format_size(f.size):>12}")
         if len(files) > 10:
             print(f"... 还有 {len(files) - 10} 个文件")
-        print("=" * 60 + "\\n")
+        print("=" * 60 + "\n")
         
         # 创建进度条
         progress = tqdm(
@@ -292,12 +267,12 @@ class HFDownloader:
                 try:
                     future.result()
                 except Exception as e:
-                    print(f"\\n❌ 任务异常: {e}")
+                    print(f"\n❌ 任务异常: {e}")
         
         progress.close()
         
         # 打印结果
-        print("\\n" + "=" * 60)
+        print("\n" + "=" * 60)
         print(f"✅ 下载完成: {results['success']}/{len(files)} 个文件成功")
         if results["failed"] > 0:
             print(f"❌ 失败文件: {results['failed']} 个")
@@ -369,7 +344,7 @@ def main():
     
     if args.list_only:
         files = downloader.get_file_list()
-        print("\\n📋 文件列表:")
+        print("\n📋 文件列表:")
         print("=" * 70)
         for f in files:
             lfs_tag = "[LFS]" if f.lfs else ""
@@ -382,189 +357,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-`;
-
-/**
- * 判断是否是允许的上游域名
- * @param {string} hostname - 要检查的域名
- * @returns {boolean}
- */
-function isAllowedUpstream(hostname) {
-    // 直接匹配已知域名
-    if (ALLOWED_UPSTREAM_DOMAINS.includes(hostname)) {
-        return true;
-    }
-    // 允许所有 .hf.co 结尾的 CDN 节点
-    if (hostname.endsWith('.hf.co')) {
-        return true;
-    }
-    return false;
-}
-
-/**
- * 解析请求路径，提取目标上游和实际路径
- * @param {string} pathname - 请求路径
- * @returns {{ upstream: string, path: string }}
- */
-function parseRequest(pathname) {
-    // 检查是否有 redirect_to_ 前缀
-    // 格式: /redirect_to_{domain}/path/to/resource
-    const prefixPattern = new RegExp(`^/${REDIRECT_PREFIX}([^/]+)(/.*)$`);
-    const match = pathname.match(prefixPattern);
-    
-    if (match) {
-        // 有前缀，提取域名和路径
-        return {
-            upstream: match[1],
-            path: match[2]
-        };
-    }
-    
-    // 无前缀，使用默认上游
-    return {
-        upstream: DEFAULT_UPSTREAM,
-        path: pathname
-    };
-}
-
-/**
- * 重写重定向 Location
- * @param {string} location - 原始 Location
- * @param {string} proxyOrigin - 代理服务器的 origin
- * @returns {string | null} - 重写后的 Location，如果不需要重写则返回 null
- */
-function rewriteLocation(location, proxyOrigin) {
-    try {
-        const locUrl = new URL(location);
-        const locHost = locUrl.hostname;
-        
-        // 检查是否是允许的上游域名
-        if (!isAllowedUpstream(locHost)) {
-            return null;
-        }
-        
-        // 构造新的重定向 URL
-        if (locHost === DEFAULT_UPSTREAM) {
-            // 默认上游，直接使用原路径
-            return `${proxyOrigin}${locUrl.pathname}${locUrl.search}`;
-        } else {
-            // 其他上游，添加 redirect_to_ 前缀
-            return `${proxyOrigin}/${REDIRECT_PREFIX}${locHost}${locUrl.pathname}${locUrl.search}`;
-        }
-    } catch (e) {
-        console.error("Location parse error:", e);
-        return null;
-    }
-}
-
-export default {
-    async fetch(request, env, ctx) {
-        const url = new URL(request.url);
-        const hostname = url.hostname;
-        const pathname = url.pathname;
-        const proxyOrigin = url.origin;
-
-        // 处理 /hf_downloader.py 请求 - 动态生成脚本
-        if (pathname === '/hf_downloader.py') {
-            const script = HF_DOWNLOADER_SCRIPT.replace('{{PROXY_DOMAIN}}', hostname);
-            return new Response(script, {
-                status: 200,
-                headers: {
-                    'Content-Type': 'text/x-python; charset=utf-8',
-                    'Content-Disposition': 'attachment; filename="hf_downloader.py"',
-                    'Cache-Control': 'no-cache'
-                }
-            });
-        }
-
-        // 处理根路径请求
-        if (pathname === '/' || pathname === '') {
-            return new Response(`
-<!DOCTYPE html>
-<html>
-<head>
-    <title>HuggingFace Proxy</title>
-    <meta charset="utf-8">
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
-        h1 { color: #ff9d00; }
-        code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; }
-        pre { background: #f4f4f4; padding: 15px; border-radius: 8px; overflow-x: auto; }
-        a { color: #ff9d00; }
-    </style>
-</head>
-<body>
-    <h1>🤗 HuggingFace Proxy</h1>
-    <p>直接访问即可，所有请求自动转发到 HuggingFace。</p>
-    <h3>示例：</h3>
-    <pre>
-# 访问模型页面
-https://${hostname}/bert-base-uncased
-
-# 下载模型文件
-https://${hostname}/bert-base-uncased/resolve/main/config.json
-
-# API 调用
-https://${hostname}/api/models/bert-base-uncased
-    </pre>
-    <h3>下载器脚本：</h3>
-    <pre>curl -O https://${hostname}/hf_downloader.py</pre>
-</body>
-</html>
-            `, {
-                status: 200,
-                headers: { 'Content-Type': 'text/html; charset=utf-8' }
-            });
-        }
-
-        // 1. 解析请求，提取目标上游和实际路径
-        const { upstream, path } = parseRequest(pathname);
-
-        // 2. 验证上游域名是否被允许
-        if (!isAllowedUpstream(upstream)) {
-            return new Response(`Upstream not allowed: ${upstream}`, { status: 403 });
-        }
-
-        // 3. 构建发往源站的请求
-        const upstreamUrl = new URL(path, `https://${upstream}`);
-        upstreamUrl.search = url.search; // 保留查询参数
-
-        const newRequest = new Request(upstreamUrl, {
-            method: request.method,
-            headers: request.headers,
-            body: request.body,
-            redirect: 'manual' // 【关键】手动拦截重定向
-        });
-
-        // 强制覆盖 Host 头
-        newRequest.headers.set('Host', upstream);
-
-        try {
-            // 4. 发起请求
-            const response = await fetch(newRequest);
-
-            // 5. 拦截并重写重定向
-            if ([301, 302, 303, 307, 308].includes(response.status)) {
-                const location = response.headers.get('Location');
-                if (location) {
-                    const newLocation = rewriteLocation(location, proxyOrigin);
-                    if (newLocation) {
-                        const newHeaders = new Headers(response.headers);
-                        newHeaders.set('Location', newLocation);
-                        return new Response(response.body, {
-                            status: response.status,
-                            statusText: response.statusText,
-                            headers: newHeaders
-                        });
-                    }
-                }
-            }
-
-            // 6. 非重定向请求，直接返回
-            return response;
-
-        } catch (e) {
-            return new Response(`Proxy Error: ${e.message}`, { status: 502 });
-        }
-    }
-};
