@@ -1,290 +1,11 @@
 /**
  * HuggingFace Proxy Worker
- * 构建时间: 2026-01-30T07:10:14.788Z
+ * 构建时间: 2026-01-30T07:31:53.942Z
  * 
  * 此文件由 build.js 自动生成，请勿手动编辑
  * 源代码位于 src/ 目录
  */
 
-
-// src/config.js
-var ALLOWED_UPSTREAM_DOMAINS = [
-  "habppygh-n8n.hf.space",
-  // 新增：你的 n8n 域名
-  "huggingface.co"
-  // 保留原域名，不影响兼容
-  // .hf.co 结尾的域名都是允许的 CDN 节点
-];
-var DEFAULT_UPSTREAM = "habppygh-n8n.hf.space";
-var REDIRECT_PREFIX = "redirect_to_";
-
-// src/utils.js
-function isAllowedUpstream(hostname) {
-  if (ALLOWED_UPSTREAM_DOMAINS.includes(hostname)) {
-    return true;
-  }
-  if (hostname.endsWith(".hf.co")) {
-    return true;
-  }
-  return false;
-}
-function parseRequest(pathname) {
-  const prefixPattern = new RegExp(`^/${REDIRECT_PREFIX}([^/]+)(/.*)$`);
-  const match = pathname.match(prefixPattern);
-  if (match) {
-    return {
-      upstream: match[1],
-      path: match[2]
-    };
-  }
-  return {
-    upstream: DEFAULT_UPSTREAM,
-    path: pathname
-  };
-}
-function rewriteLocation(location, proxyOrigin) {
-  try {
-    const locUrl = new URL(location);
-    const locHost = locUrl.hostname;
-    if (!isAllowedUpstream(locHost)) {
-      return null;
-    }
-    if (locHost === DEFAULT_UPSTREAM) {
-      return `${proxyOrigin}${locUrl.pathname}${locUrl.search}`;
-    } else {
-      return `${proxyOrigin}/${REDIRECT_PREFIX}${locHost}${locUrl.pathname}${locUrl.search}`;
-    }
-  } catch (e) {
-    console.error("Location parse error:", e);
-    return null;
-  }
-}
-function isBrowserRequest(request) {
-  const accept = request.headers.get("Accept") || "";
-  const userAgent = request.headers.get("User-Agent") || "";
-  const acceptsHtml = accept.includes("text/html");
-  const browserPatterns = [
-    "Mozilla/",
-    "Chrome/",
-    "Safari/",
-    "Firefox/",
-    "Edge/",
-    "Opera/",
-    "MSIE",
-    "Trident/",
-    "SamsungBrowser/",
-    "UCBrowser/"
-  ];
-  const isBrowserUA = browserPatterns.some((pattern) => userAgent.includes(pattern));
-  const nonBrowserPatterns = [
-    "curl/",
-    "wget/",
-    "Python-requests",
-    "python-requests",
-    "requests/",
-    "go-http-tool",
-    "Java/",
-    "okhttp",
-    "axios/",
-    "node-fetch",
-    "deno/",
-    "libwww-perl",
-    "lwp-trivial",
-    "Git/",
-    "git/",
-    "GitHub-Hookshot",
-    "HTTPie/",
-    "http.rb/",
-    "Ruby/",
-    "PHP/",
-    "PostmanRuntime/",
-    "insomnia/",
-    "Paw/",
-    "REST Client",
-    "Swift/",
-    "Darwin/",
-    "CF-Workers",
-    "Cloudflare-Workers",
-    "Worker/",
-    "dart:io"
-  ];
-  const isToolUA = nonBrowserPatterns.some((pattern) => userAgent.includes(pattern));
-  return acceptsHtml && isBrowserUA && !isToolUA;
-}
-function isAllowedBrowserPath(pathname) {
-  const allowedPaths = ["/", "", "/hf_downloader.py"];
-  return allowedPaths.includes(pathname);
-}
-function validateBrowserAccess(request, pathname, restrictBrowserAccess) {
-  if (!restrictBrowserAccess) {
-    return null;
-  }
-  if (isBrowserRequest(request) && !isAllowedBrowserPath(pathname)) {
-    return new Response(
-      "\u6D4F\u89C8\u5668\u8BBF\u95EE\u53D7\u9650\u3002\u8BF7\u4F7F\u7528 API \u5BA2\u6237\u7AEF\uFF08curl\u3001wget\u3001Python \u7B49\uFF09\u8BBF\u95EE\u6A21\u578B\u6587\u4EF6\u3002\n\n\u5141\u8BB8\u8BBF\u95EE\u7684\u9875\u9762\uFF1A\n  - / (\u9996\u9875)\n  - /hf_downloader.py (\u4E0B\u8F7D\u811A\u672C)",
-      {
-        status: 403,
-        headers: { "Content-Type": "text/plain; charset=utf-8" }
-      }
-    );
-  }
-  return null;
-}
-
-// src/templates/home.html
-var home_default = `<!DOCTYPE html>
-<html>
-<head>
-    <title>HuggingFace Proxy</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            max-width: 800px;
-            margin: 50px auto;
-            padding: 20px;
-            background: #fafafa;
-            color: #333;
-        }
-        h1 {
-            color: #ff9d00;
-            margin-bottom: 10px;
-        }
-        h3 {
-            color: #555;
-            margin-top: 30px;
-        }
-        p {
-            color: #666;
-            line-height: 1.6;
-        }
-        code {
-            background: #e8e8e8;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-        }
-        pre {
-            background: #2d2d2d;
-            color: #f8f8f2;
-            padding: 20px;
-            border-radius: 8px;
-            overflow-x: auto;
-            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-            font-size: 14px;
-            line-height: 1.5;
-        }
-        pre code {
-            background: transparent;
-            padding: 0;
-        }
-        .comment {
-            color: #6a9955;
-        }
-        a {
-            color: #ff9d00;
-            text-decoration: none;
-        }
-        a:hover {
-            text-decoration: underline;
-        }
-        .container {
-            background: white;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .badge {
-            display: inline-block;
-            background: #ff9d00;
-            color: white;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            margin-left: 10px;
-            vertical-align: middle;
-        }
-        .header-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-        .github-star {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            background: linear-gradient(135deg, #24292e 0%, #434d56 100%);
-            color: white;
-            padding: 10px 18px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 500;
-            text-decoration: none;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-        }
-        .github-star:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.25);
-            text-decoration: none;
-            background: linear-gradient(135deg, #2d3439 0%, #535d66 100%);
-        }
-        .github-star svg {
-            width: 18px;
-            height: 18px;
-            fill: currentColor;
-        }
-        .github-star .star-icon {
-            color: #f1c40f;
-            font-size: 16px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header-row">
-            <h1>\u{1F917} HuggingFace Proxy <span class="badge">v2.0</span></h1>
-            <a href="https://github.com/AinzRimuru/HuggingfaceProxy" target="_blank" class="github-star">
-                <svg viewBox="0 0 16 16" aria-hidden="true">
-                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
-                </svg>
-                <span class="star-icon">\u2B50</span>
-                Star on GitHub
-            </a>
-        </div>
-        <p>\u76F4\u63A5\u8BBF\u95EE\u5373\u53EF\uFF0C\u6240\u6709\u8BF7\u6C42\u81EA\u52A8\u8F6C\u53D1\u5230 HuggingFace\u3002</p>
-        
-        <h3>\u{1F4E6} \u8BBF\u95EE\u6A21\u578B</h3>
-        <pre><code><span class="comment"># \u8BBF\u95EE\u6A21\u578B\u9875\u9762</span>
-https://{{HOSTNAME}}/bert-base-uncased
-
-<span class="comment"># \u4E0B\u8F7D\u6A21\u578B\u6587\u4EF6</span>
-https://{{HOSTNAME}}/bert-base-uncased/resolve/main/config.json
-
-<span class="comment"># API \u8C03\u7528</span>
-https://{{HOSTNAME}}/api/models/bert-base-uncased</code></pre>
-
-        <h3>\u{1F4E5} \u4E0B\u8F7D\u5668\u811A\u672C</h3>
-        <pre><code><span class="comment"># \u4E0B\u8F7D Python \u811A\u672C</span>
-curl -O https://{{HOSTNAME}}/hf_downloader.py
-
-<span class="comment"># \u4F7F\u7528\u793A\u4F8B</span>
-python hf_downloader.py bert-base-uncased
-python hf_downloader.py openai/whisper-large-v3 --type model</code></pre>
-
-        <h3>\u{1F517} \u73AF\u5883\u53D8\u91CF\u914D\u7F6E</h3>
-        <pre><code><span class="comment"># \u8BBE\u7F6E HuggingFace \u955C\u50CF</span>
-export HF_ENDPOINT=https://{{HOSTNAME}}</code></pre>
-    </div>
-</body>
-</html>
-`;
 
 // src/scripts/hf_downloader.py
 var hf_downloader_default = `#!/usr/bin/env python3
@@ -708,25 +429,131 @@ if __name__ == "__main__":
     main()
 `;
 
-// src/handlers.js
-function handleHome(hostname) {
-  const html = home_default.replace(/\{\{HOSTNAME\}\}/g, hostname);
-  return new Response(html, {
-    status: 200,
-    headers: { "Content-Type": "text/html; charset=utf-8" }
-  });
+// src/config.js
+var ALLOWED_UPSTREAM_DOMAINS = [
+  "habppygh-n8n.hf.space",
+  // 新增：你的 n8n 域名
+  "huggingface.co"
+  // 保留原域名，不影响兼容
+  // .hf.co 结尾的域名都是允许的 CDN 节点
+];
+var DEFAULT_UPSTREAM = "habppygh-n8n.hf.space";
+var REDIRECT_PREFIX = "redirect_to_";
+
+// src/utils.js
+function isAllowedUpstream(hostname) {
+  if (ALLOWED_UPSTREAM_DOMAINS.includes(hostname)) {
+    return true;
+  }
+  if (hostname.endsWith(".hf.co")) {
+    return true;
+  }
+  return false;
 }
-function handleDownloaderScript(hostname) {
-  const script = hf_downloader_default.replace(/\{\{PROXY_DOMAIN\}\}/g, hostname);
-  return new Response(script, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/x-python; charset=utf-8",
-      "Content-Disposition": 'attachment; filename="hf_downloader.py"',
-      "Cache-Control": "no-cache"
+function parseRequest(pathname) {
+  const prefixPattern = new RegExp(`^/${REDIRECT_PREFIX}([^/]+)(/.*)$`);
+  const match = pathname.match(prefixPattern);
+  if (match) {
+    return {
+      upstream: match[1],
+      path: match[2]
+    };
+  }
+  return {
+    upstream: DEFAULT_UPSTREAM,
+    path: pathname
+  };
+}
+function rewriteLocation(location, proxyOrigin) {
+  try {
+    const locUrl = new URL(location);
+    const locHost = locUrl.hostname;
+    if (!isAllowedUpstream(locHost)) {
+      return null;
     }
-  });
+    if (locHost === DEFAULT_UPSTREAM) {
+      return `${proxyOrigin}${locUrl.pathname}${locUrl.search}`;
+    } else {
+      return `${proxyOrigin}/${REDIRECT_PREFIX}${locHost}${locUrl.pathname}${locUrl.search}`;
+    }
+  } catch (e) {
+    console.error("Location parse error:", e);
+    return null;
+  }
 }
+function isBrowserRequest(request) {
+  const accept = request.headers.get("Accept") || "";
+  const userAgent = request.headers.get("User-Agent") || "";
+  const acceptsHtml = accept.includes("text/html");
+  const browserPatterns = [
+    "Mozilla/",
+    "Chrome/",
+    "Safari/",
+    "Firefox/",
+    "Edge/",
+    "Opera/",
+    "MSIE",
+    "Trident/",
+    "SamsungBrowser/",
+    "UCBrowser/"
+  ];
+  const isBrowserUA = browserPatterns.some((pattern) => userAgent.includes(pattern));
+  const nonBrowserPatterns = [
+    "curl/",
+    "wget/",
+    "Python-requests",
+    "python-requests",
+    "requests/",
+    "go-http-tool",
+    "Java/",
+    "okhttp",
+    "axios/",
+    "node-fetch",
+    "deno/",
+    "libwww-perl",
+    "lwp-trivial",
+    "Git/",
+    "git/",
+    "GitHub-Hookshot",
+    "HTTPie/",
+    "http.rb/",
+    "Ruby/",
+    "PHP/",
+    "PostmanRuntime/",
+    "insomnia/",
+    "Paw/",
+    "REST Client",
+    "Swift/",
+    "Darwin/",
+    "CF-Workers",
+    "Cloudflare-Workers",
+    "Worker/",
+    "dart:io"
+  ];
+  const isToolUA = nonBrowserPatterns.some((pattern) => userAgent.includes(pattern));
+  return acceptsHtml && isBrowserUA && !isToolUA;
+}
+function isAllowedBrowserPath(pathname) {
+  const allowedPaths = ["/", "", "/hf_downloader.py"];
+  return allowedPaths.includes(pathname);
+}
+function validateBrowserAccess(request, pathname, restrictBrowserAccess) {
+  if (!restrictBrowserAccess) {
+    return null;
+  }
+  if (isBrowserRequest(request) && !isAllowedBrowserPath(pathname)) {
+    return new Response(
+      "\u6D4F\u89C8\u5668\u8BBF\u95EE\u53D7\u9650\u3002\u8BF7\u4F7F\u7528 API \u5BA2\u6237\u7AEF\uFF08curl\u3001wget\u3001Python \u7B49\uFF09\u8BBF\u95EE\u6A21\u578B\u6587\u4EF6\u3002\n\n\u5141\u8BB8\u8BBF\u95EE\u7684\u9875\u9762\uFF1A\n  - / (\u9996\u9875)\n  - /hf_downloader.py (\u4E0B\u8F7D\u811A\u672C)",
+      {
+        status: 403,
+        headers: { "Content-Type": "text/plain; charset=utf-8" }
+      }
+    );
+  }
+  return null;
+}
+
+// src/index.js
 async function handleProxy(request, url) {
   const pathname = url.pathname;
   const proxyOrigin = url.origin;
@@ -741,7 +568,6 @@ async function handleProxy(request, url) {
     headers: request.headers,
     body: request.body,
     redirect: "manual"
-    // 【关键】手动拦截重定向
   });
   newRequest.headers.set("Host", upstream);
   try {
@@ -766,8 +592,17 @@ async function handleProxy(request, url) {
     return new Response(`Proxy Error: ${e.message}`, { status: 502 });
   }
 }
-
-// src/index.js
+async function handleDownloaderScript(hostname) {
+  const script = hf_downloader_default.replace(/\{\{PROXY_DOMAIN\}\}/g, hostname);
+  return new Response(script, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/x-python; charset=utf-8",
+      "Content-Disposition": 'attachment; filename="hf_downloader.py"',
+      "Cache-Control": "no-cache"
+    }
+  });
+}
 var index_default = {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -779,13 +614,10 @@ var index_default = {
       return accessCheck;
     }
     switch (true) {
-      // 首页
-      case (pathname === "/" || pathname === ""):
-        return handleHome(hostname);
-      // 下载器脚本
+      // 保留下载脚本功能，不影响原有工具使用
       case pathname === "/hf_downloader.py":
         return handleDownloaderScript(hostname);
-      // 代理请求
+      // 所有其他路径（包括根路径/），全部触发代理转发到n8n
       default:
         return handleProxy(request, url);
     }
