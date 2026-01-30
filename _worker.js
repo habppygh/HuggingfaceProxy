@@ -1,6 +1,6 @@
 /**
  * HuggingFace Proxy Worker
- * 构建时间: 2026-01-17T02:40:05.208Z
+ * 构建时间: 2026-01-30T07:10:14.788Z
  * 
  * 此文件由 build.js 自动生成，请勿手动编辑
  * 源代码位于 src/ 目录
@@ -9,10 +9,13 @@
 
 // src/config.js
 var ALLOWED_UPSTREAM_DOMAINS = [
+  "habppygh-n8n.hf.space",
+  // 新增：你的 n8n 域名
   "huggingface.co"
+  // 保留原域名，不影响兼容
   // .hf.co 结尾的域名都是允许的 CDN 节点
 ];
-var DEFAULT_UPSTREAM = "huggingface.co";
+var DEFAULT_UPSTREAM = "habppygh-n8n.hf.space";
 var REDIRECT_PREFIX = "redirect_to_";
 
 // src/utils.js
